@@ -92,9 +92,9 @@ def eval(device, model, loader, criterion, lambda_JR):
         loss_super = criterion(output, targets) # supervised loss
         loss_JR = reg_full(data, output) # Jacobian regularization
         loss = loss_super + lambda_JR*loss_JR # full loss
-        loss_super_avg += loss_super*targets.size(0)
-        loss_JR_avg += loss_JR*targets.size(0)
-        loss_avg += loss*targets.size(0)
+        loss_super_avg += loss_super.item()*targets.size(0)
+        loss_JR_avg += loss_JR.item()*targets.size(0)
+        loss_avg += loss.item()*targets.size(0)
     loss_super_avg /= total
     loss_JR_avg /= total
     loss_avg /= total
