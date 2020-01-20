@@ -98,7 +98,7 @@ def eval(device, model, loader, criterion, lambda_JR):
     loss_super_avg /= total
     loss_JR_avg /= total
     loss_avg /= total
-    return correct, total, loss_super, loss_JR, loss
+    return correct, total, loss_super.item(), loss_JR.item(), loss.item()
 
 def main():
     '''
