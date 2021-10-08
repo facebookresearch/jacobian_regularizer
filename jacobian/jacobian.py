@@ -51,7 +51,7 @@ class JacobianReg(nn.Module):
                 # random properly-normalized vector for each sample
                 v = self._random_vector(C=C,B=B)
             if x.is_cuda:
-                v = v.cuda()
+                v = v.to(x.device)
             Jv = self._jacobian_vector_product(y, x, v, create_graph=True)
             J2 += C*torch.norm(Jv)**2 / (num_proj*B)
         R = (1/2)*J2
