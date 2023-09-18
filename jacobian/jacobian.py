@@ -13,7 +13,8 @@
 from __future__ import division
 import torch
 import torch.nn as nn
-import torch.autograd as autograd
+from torch.autograd import grad
+import numpy as np
 
 
 class JacobianReg(nn.Module):
@@ -31,55 +32,38 @@ class JacobianReg(nn.Module):
         assert n == -1 or n > 0
         self.n = n
         super(JacobianReg, self).__init__()
-
+    '''
+    The shape of the output tensor y is expected to be (B,...) where B is the batch_size.
+    '''
     def forward(self, x, y):
         '''
-        computes (1/2) tr |dy/dx|^2
+        computes (1/2) tr |dy/dx|^2 if n=-1 or it approximates it
         '''
-        B,C = y.shape
-        if self.n == -1:
-            num_proj = C
-        else:
-            num_proj = self.n
-        J2 = 0
-        for ii in range(num_proj):
-            if self.n == -1:
-                # orthonormal vector, sequentially spanned
-                v=torch.zeros(B,C)
-                v[:,ii]=1
-            else:
-                # random properly-normalized vector for each sample
-                v = self._random_vector(C=C,B=B)
-            if x.is_cuda:
-                v = v.cuda()
-            Jv = self._jacobian_vector_product(y, x, v, create_graph=True)
-            J2 += C*torch.norm(Jv)**2 / (num_proj*B)
-        R = (1/2)*J2
-        return R
+        shape = y.shape
+        dimension = np.prod(shape[1:])
+        if self.n == -1 or self.n>=dimension:
+            # orthonormal tensor, sequentially spanned, of shape (dimension, shape)
+            v = torch.eye(dimension)
+            v = torch.reshape(v, (dimension,)+shape[1:])
+            v = torch.unsqueeze(v,dim=1)
+            v = v.expand((dimension,)+shape)
 
-    def _random_vector(self, C, B):
+        else:
+            # random properly-normalized vector for each sample
+            v = self._random_vector(shape, dimension)
+        if x.is_cuda:
+            v = v.cuda()
+        #v always has shape (num_proj, shape)
+        Jv = grad(y, x, v, retain_graph=True, create_graph=True, is_grads_batched=True)[0]
+        Jv = torch.square(Jv)
+        Jv = torch.sum(Jv, dim = tuple(range(2,len(shape))))
+        return dimension*torch.mean(Jv)/2
+
+    def _random_vector(self, shape, dimension):
         '''
         creates a random vector of dimension C with a norm of C^(1/2)
         (as needed for the projection formula to work)
         '''
-        if C == 1: 
-            return torch.ones(B)
-        v=torch.randn(B,C)
-        arxilirary_zero=torch.zeros(B,C)
-        vnorm=torch.norm(v, 2, 1,True)
-        v=torch.addcdiv(arxilirary_zero, 1.0, v, vnorm)
-        return v
-                                                                            
-    def _jacobian_vector_product(self, y, x, v, create_graph=False): 
-        '''
-        Produce jacobian-vector product dy/dx dot v.
-
-        Note that if you want to differentiate it,
-        you need to make create_graph=True
-        '''                                                            
-        flat_y = y.reshape(-1)
-        flat_v = v.reshape(-1)
-        grad_x, = torch.autograd.grad(flat_y, x, flat_v, 
-                                        retain_graph=True, 
-                                        create_graph=create_graph)
-        return grad_x
+        v = torch.randn((self.n, shape[0]*dimension))
+        v = torch.nn.functional.normalize(v, dim=-1)
+        return v.reshape((self.n,)+shape)
